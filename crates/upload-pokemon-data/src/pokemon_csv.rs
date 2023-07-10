@@ -1,4 +1,18 @@
-use serde::Deserialize;
+use serde::{de, Deserialize};
+
+fn from_capital_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    let s: String = de::Deserialize::deserialize(deserializer)?;
+    match s.as_str() {
+        "True" => Ok(true),
+        "False" => Ok(false),
+        _ => Err(serde::de::Error::custom(
+            "not a boolean!",
+        )),
+    }
+}
 
 #[derive(Debug, Deserialize)]
 pub struct PokemonCsv {
@@ -16,10 +30,16 @@ pub struct PokemonCsv {
     pub weight: u16,
     pub generation: u8,
     pub female_rate: Option<f32>,
+    #[serde(deserialize_with = "from_capital_bool")]
     pub genderless: bool,
-    #[serde(rename(deserialize = "legendary/mythical"))]
+    #[serde(
+        rename(deserialize = "legendary/mythical"),
+        deserialize_with = "from_capital_bool"
+    )]
     pub is_legendary_or_mythical: bool,
+    #[serde(deserialize_with = "from_capital_bool")]
     pub is_default: bool,
+    #[serde(deserialize_with = "from_capital_bool")]
     pub forms_switchable: bool,
     pub base_experience: u16,
     pub capture_rate: u8,
