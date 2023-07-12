@@ -6,10 +6,10 @@ use sqlx::{
 };
 use svix_ksuid::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PokemonId(Ksuid);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PokemonTableRow {
     pub id: PokemonId,
     pub name: String,
@@ -155,7 +155,7 @@ impl From<PokemonCsv> for PokemonTableRow {
 }
 
 pub async fn insert_pokemon(
-    pool: &MySqlPool,
+    pool: MySqlPool,
     PokemonTableRow {
         id,
         name,
@@ -291,6 +291,12 @@ pub async fn insert_pokemon(
     )
     .execute(pool)
     .await
+}
+
+impl PokemonId {
+    pub fn new() -> Self {
+        Self(Ksuid::new(None, None))
+    }
 }
 
 impl<'q> Encode<'q, MySql> for PokemonId {
