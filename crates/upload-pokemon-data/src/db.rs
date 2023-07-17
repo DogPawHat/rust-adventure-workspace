@@ -289,7 +289,7 @@ pub async fn insert_pokemon(
         steel_attack_effectiveness,
         fairy_attack_effectiveness,
     )
-    .execute(pool)
+    .execute(&pool)
     .await
 }
 

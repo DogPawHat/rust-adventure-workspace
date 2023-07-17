@@ -8,8 +8,6 @@ use pokemon_csv::*;
 use sqlx::mysql::MySqlPoolOptions;
 use std::{collections::HashMap, env, time::Duration};
 
-const BIND_LIMIT: usize = 65535;
-
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     color_eyre::install()?;
