@@ -1,2 +1,4 @@
 /target
 /functions
+# Local Netlify folder
+.netlify
