@@ -8,3 +8,9 @@ cargo zigbuild --release --bin pokemon-api --target x86_64-unknown-linux-gnu.2.2
 cp target/x86_64-unknown-linux-gnu/release/pokemon-api functions/
 """
 publish = "crates"
+
+
+[[redirects]]
+from = "/api/pokemon/:slug"
+to = "/.netlify/functions/pokemon-api"
+status = 200
