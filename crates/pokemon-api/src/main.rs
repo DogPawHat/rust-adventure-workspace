@@ -1,9 +1,13 @@
+use std::env;
+
 use aws_lambda_events::{
     encodings::Body,
     event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
 };
 use http::header::HeaderMap;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
+use serde::Serialize;
+use sqlx::mysql::MySqlPoolOptions;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -13,13 +17,34 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 
+#[derive(Debug, sqlx::FromRow, Serialize)]
+struct PokemonHp {
+    name: String,
+    hp: u16,
+}
 async fn handler(_: LambdaEvent<ApiGatewayProxyRequest>) -> Result<ApiGatewayProxyResponse, Error> {
     println!("handler");
+    let database_url = env::var("DATABASE_URL")?;
+
+    let pool = MySqlPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+
+    let result = sqlx::query_as!(
+        PokemonHp,
+        r#"SELECT name, hp from pokemon where slug = ?"#,
+        "squirtle"
+    )
+    .fetch_one(&pool)
+    .await?;
+
+    let json_pokemon = serde_json::to_string(&result)?;
     let response = ApiGatewayProxyResponse {
         status_code: 200,
         headers: HeaderMap::new(),
         multi_value_headers: HeaderMap::new(),
-        body: Some(Body::Text("Boop".to_string())),
+        body: Some(Body::Text(json_pokemon)),
         is_base64_encoded: false,
     };
     Ok(response)
@@ -29,9 +54,10 @@ async fn handler(_: LambdaEvent<ApiGatewayProxyRequest>) -> Result<ApiGatewayPro
 mod tests {
     use std::collections::HashMap;
 
-    use aws_lambda_events::{event::apigw::{
-        ApiGatewayProxyRequestContext, ApiGatewayRequestIdentity,
-    }, query_map::QueryMap};
+    use aws_lambda_events::{
+        event::apigw::{ApiGatewayProxyRequestContext, ApiGatewayRequestIdentity},
+        query_map::QueryMap,
+    };
     use http::Method;
     use lambda_runtime::Context;
 
@@ -86,12 +112,20 @@ mod tests {
         };
 
         assert_eq!(
-            handler(LambdaEvent::new(event.clone(), Context::default())).await.unwrap(),
+            handler(LambdaEvent::new(event.clone(), Context::default()))
+                .await
+                .unwrap(),
             ApiGatewayProxyResponse {
                 status_code: 200,
                 headers: HeaderMap::new(),
                 multi_value_headers: HeaderMap::new(),
-                body: Some(Body::Text("Boop".to_string())),
+                body: Some(Body::Text(
+                    serde_json::to_string(&PokemonHp {
+                        name: String::from("Squirtle"),
+                        hp: 45
+                    },)
+                    .unwrap()
+                )),
                 is_base64_encoded: false,
             }
         )
