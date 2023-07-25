@@ -122,7 +122,7 @@ mod tests {
                 body: Some(Body::Text(
                     serde_json::to_string(&PokemonHp {
                         name: String::from("Squirtle"),
-                        hp: 45
+                        hp: 44
                     },)
                     .unwrap()
                 )),
