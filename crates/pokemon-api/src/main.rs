@@ -7,6 +7,7 @@ use aws_lambda_events::{
 use http::header::HeaderMap;
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use serde::Serialize;
+use serde_json::json;
 use sqlx::mysql::MySqlPoolOptions;
 
 #[tokio::main]
@@ -34,8 +35,20 @@ async fn handler(
     let requested_pokemon = path.split("/").last();
 
     match requested_pokemon {
-        Some("") => todo!(),
-        None => todo!(),
+        Some("") => {
+            let error_message = serde_json::to_string(&json!({
+                "error": "searched for empty pokemon"
+            }))?;
+            let response = ApiGatewayProxyResponse {
+                status_code: 400,
+                headers: HeaderMap::new(),
+                multi_value_headers: HeaderMap::new(),
+                body: Some(Body::Text(error_message)),
+                is_base64_encoded: false,
+            };
+            Ok(response)
+        }
+        None => panic!("requested_pokemon is None, which should never happen"),
         Some(pokemon_name) => {
             let pool = MySqlPoolOptions::new()
                 .max_connections(5)
@@ -173,12 +186,25 @@ mod tests {
     }
 
     #[tokio::test]
-    #[should_panic(expected = "not yet implemented")]
     async fn handler_handles_empty_pokemon() {
         let event = pokemon_event_with_path("/api/pokemon//".to_string());
 
-        handler(LambdaEvent::new(event.clone(), Context::default()))
-            .await
-            .unwrap();
+        assert_eq!(
+            handler(LambdaEvent::new(event.clone(), Context::default()))
+                .await
+                .unwrap(),
+            ApiGatewayProxyResponse {
+                status_code: 400,
+                headers: HeaderMap::new(),
+                multi_value_headers: HeaderMap::new(),
+                body: Some(Body::Text(
+                    serde_json::to_string(&json!({
+                        "error": "searched for empty pokemon"
+                    }))
+                    .unwrap()
+                )),
+                is_base64_encoded: false,
+            }
+        )
     }
 }
