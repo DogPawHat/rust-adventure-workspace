@@ -22,32 +22,45 @@ struct PokemonHp {
     name: String,
     hp: u16,
 }
-async fn handler(_: LambdaEvent<ApiGatewayProxyRequest>) -> Result<ApiGatewayProxyResponse, Error> {
+async fn handler(
+    LambdaEvent { payload, .. }: LambdaEvent<ApiGatewayProxyRequest>,
+) -> Result<ApiGatewayProxyResponse, Error> {
     println!("handler");
     let database_url = env::var("DATABASE_URL")?;
 
-    let pool = MySqlPoolOptions::new()
-        .max_connections(5)
-        .connect(&database_url)
-        .await?;
+    let path = payload
+        .path
+        .expect("expect there to always be an event path");
+    let requested_pokemon = path.split("/").last();
 
-    let result = sqlx::query_as!(
-        PokemonHp,
-        r#"SELECT name, hp from pokemon where slug = ?"#,
-        "squirtle"
-    )
-    .fetch_one(&pool)
-    .await?;
+    match requested_pokemon {
+        Some("") => todo!(),
+        None => todo!(),
+        Some(pokemon_name) => {
+            let pool = MySqlPoolOptions::new()
+                .max_connections(5)
+                .connect(&database_url)
+                .await?;
 
-    let json_pokemon = serde_json::to_string(&result)?;
-    let response = ApiGatewayProxyResponse {
-        status_code: 200,
-        headers: HeaderMap::new(),
-        multi_value_headers: HeaderMap::new(),
-        body: Some(Body::Text(json_pokemon)),
-        is_base64_encoded: false,
-    };
-    Ok(response)
+            let result = sqlx::query_as!(
+                PokemonHp,
+                r#"SELECT name, hp from pokemon where slug = ?"#,
+                pokemon_name
+            )
+            .fetch_one(&pool)
+            .await?;
+
+            let json_pokemon = serde_json::to_string(&result)?;
+            let response = ApiGatewayProxyResponse {
+                status_code: 200,
+                headers: HeaderMap::new(),
+                multi_value_headers: HeaderMap::new(),
+                body: Some(Body::Text(json_pokemon)),
+                is_base64_encoded: false,
+            };
+            Ok(response)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -63,11 +76,10 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
-    async fn handler_handles() {
-        let event = ApiGatewayProxyRequest {
+    fn pokemon_event_with_path(path: String) -> ApiGatewayProxyRequest {
+        ApiGatewayProxyRequest {
             resource: None,
-            path: Some("/.netlify/functions/pokemon-api".to_string()),
+            path: Some(path),
             http_method: Method::GET,
             headers: HeaderMap::default(),
             multi_value_headers: HeaderMap::default(),
@@ -109,7 +121,12 @@ mod tests {
             },
             body: None,
             is_base64_encoded: false,
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn handler_handles_squirtle() {
+        let event = pokemon_event_with_path("/api/pokemon/squirtle".to_string());
 
         assert_eq!(
             handler(LambdaEvent::new(event.clone(), Context::default()))
@@ -129,5 +146,39 @@ mod tests {
                 is_base64_encoded: false,
             }
         )
+    }
+
+    #[tokio::test]
+    async fn handler_handles_bulbasaur() {
+        let event = pokemon_event_with_path("/api/pokemon/bulbasaur".to_string());
+
+        assert_eq!(
+            handler(LambdaEvent::new(event.clone(), Context::default()))
+                .await
+                .unwrap(),
+            ApiGatewayProxyResponse {
+                status_code: 200,
+                headers: HeaderMap::new(),
+                multi_value_headers: HeaderMap::new(),
+                body: Some(Body::Text(
+                    serde_json::to_string(&PokemonHp {
+                        name: String::from("Bulbasaur"),
+                        hp: 45
+                    },)
+                    .unwrap()
+                )),
+                is_base64_encoded: false,
+            }
+        )
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "not yet implemented")]
+    async fn handler_handles_empty_pokemon() {
+        let event = pokemon_event_with_path("/api/pokemon//".to_string());
+
+        handler(LambdaEvent::new(event.clone(), Context::default()))
+            .await
+            .unwrap();
     }
 }
