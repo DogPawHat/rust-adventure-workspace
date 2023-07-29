@@ -1,5 +1,7 @@
 use std::env;
 
+use tracing_subscriber;
+use tracing::{error, info, instrument};
 use aws_lambda_events::{
     encodings::Body,
     event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
@@ -15,7 +17,8 @@ static POOL: OnceCell<Pool<MySql>> = OnceCell::new();
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    println!("cold start");
+    tracing_subscriber::fmt::init();
+
     let database_url = env::var("DATABASE_URL")?;
     let pool = MySqlPoolOptions::new()
         .max_connections(5)
@@ -32,11 +35,11 @@ struct PokemonHp {
     name: String,
     hp: u16,
 }
+
+#[instrument]
 async fn handler(
     LambdaEvent { payload, .. }: LambdaEvent<ApiGatewayProxyRequest>,
 ) -> Result<ApiGatewayProxyResponse, Error> {
-    println!("handler");
-
     let path = payload
         .path
         .expect("expect there to always be an event path");
@@ -44,6 +47,7 @@ async fn handler(
 
     match requested_pokemon {
         Some("") => {
+            error!("searched for empty pokemon");
             let error_message = serde_json::to_string(&json!({
                 "error": "searched for empty pokemon"
             }))?;
@@ -58,6 +62,7 @@ async fn handler(
         }
         None => panic!("requested_pokemon is None, which should never happen"),
         Some(pokemon_name) => {
+            info!(pokemon_name, "requested a pokemon");
             let result = sqlx::query_as!(
                 PokemonHp,
                 r#"SELECT name, hp from pokemon where slug = ?"#,
