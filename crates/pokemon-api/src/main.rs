@@ -1,7 +1,5 @@
 use std::env;
 
-use tracing_subscriber;
-use tracing::{error, info, instrument};
 use aws_lambda_events::{
     encodings::Body,
     event::apigw::{ApiGatewayProxyRequest, ApiGatewayProxyResponse},
@@ -12,6 +10,9 @@ use once_cell::sync::OnceCell;
 use serde::Serialize;
 use serde_json::json;
 use sqlx::{mysql::MySqlPoolOptions, MySql, Pool};
+use tracing::{error, info, instrument};
+use tracing_subscriber;
+use upload_pokemon_data::PokemonId;
 
 static POOL: OnceCell<Pool<MySql>> = OnceCell::new();
 
@@ -32,8 +33,10 @@ async fn main() -> Result<(), Error> {
 
 #[derive(Debug, sqlx::FromRow, Serialize)]
 struct PokemonHp {
+    id: PokemonId,
     name: String,
     hp: u16,
+    legendary_or_mythical: bool,
 }
 
 #[instrument]
@@ -65,7 +68,17 @@ async fn handler(
             info!(pokemon_name, "requested a pokemon");
             let result = sqlx::query_as!(
                 PokemonHp,
-                r#"SELECT name, hp from pokemon where slug = ?"#,
+                r#"
+SELECT 
+    id as "id!: PokemonId",
+    name,
+    hp,
+    legendary_or_mythical as "legendary_or_mythical!: bool"
+FROM 
+    pokemon 
+WHERE 
+slug = ?
+"#,
                 pokemon_name
             )
             .fetch_one(POOL.get().expect("Static pool is not initalized"))
@@ -156,9 +169,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handler_handles_squirtle() {
+    async fn handler_handles_ho_oh() {
         setup_db().await;
-        let event = pokemon_event_with_path("/api/pokemon/squirtle".to_string());
+        let event = pokemon_event_with_path("/api/pokemon/ho-oh".to_string());
 
         assert_eq!(
             handler(LambdaEvent::new(event.clone(), Context::default()))
@@ -170,8 +183,37 @@ mod tests {
                 multi_value_headers: HeaderMap::new(),
                 body: Some(Body::Text(
                     serde_json::to_string(&PokemonHp {
+                        name: String::from("Ho Oh"),
+                        hp: 106,
+                        legendary_or_mythical: true
+                    },)
+                    .unwrap()
+                )),
+                is_base64_encoded: false,
+            }
+        )
+    }
+
+    #[tokio::test]
+    async fn handler_handles_squirtle() {
+        setup_db().await;
+        let event = pokemon_event_with_path("/api/pokemon/squirtle".to_string());
+
+        let response = handler(LambdaEvent::new(event.clone(), Context::default()))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response,
+            ApiGatewayProxyResponse {
+                status_code: 200,
+                headers: HeaderMap::new(),
+                multi_value_headers: HeaderMap::new(),
+                body: Some(Body::Text(
+                    serde_json::to_string(&PokemonHp {
                         name: String::from("Squirtle"),
-                        hp: 44
+                        hp: 44,
+                        legendary_or_mythical: false
                     },)
                     .unwrap()
                 )),
@@ -196,7 +238,8 @@ mod tests {
                 body: Some(Body::Text(
                     serde_json::to_string(&PokemonHp {
                         name: String::from("Bulbasaur"),
-                        hp: 45
+                        hp: 45,
+                        legendary_or_mythical: false
                     },)
                     .unwrap()
                 )),

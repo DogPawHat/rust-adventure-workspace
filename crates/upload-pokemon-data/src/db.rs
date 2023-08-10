@@ -1,10 +1,13 @@
 use crate::pokemon_csv::PokemonCsv;
 use inflector::Inflector;
+use serde::{Serialize, Serializer};
 use sqlx::{
-    database::HasArguments, encode::IsNull, mysql::MySqlTypeInfo, Database, Encode, MySql,
-    MySqlPool, Type,
+    database::{HasArguments, HasValueRef},
+    encode::IsNull,
+    mysql::MySqlTypeInfo,
+    Database, Encode, Decode, MySql, MySqlPool, Type,
 };
-use svix_ksuid::*;
+use svix_ksuid::{Ksuid, KsuidLike};
 
 #[derive(Debug, Clone)]
 pub struct PokemonId(Ksuid);
@@ -306,11 +309,32 @@ impl<'q> Encode<'q, MySql> for PokemonId {
     }
 }
 
+impl<'r> Decode<'r, MySql> for PokemonId {
+    fn decode(
+        value: <MySql as HasValueRef<'r>>::ValueRef,
+    ) -> Result<PokemonId, Box<dyn std::error::Error + 'static + Send + Sync>> {
+        let value = <&[u8] as Decode<MySql>>::decode(value)?;
+        let base62_ksuid = std::str::from_utf8(&value)?;
+        let ksuid = Ksuid::from_base62(&base62_ksuid)?;
+        Ok(PokemonId(ksuid))
+    }
+}
+
 impl Type<MySql> for PokemonId {
     fn type_info() -> <MySql as Database>::TypeInfo {
         <&[u8] as Type<MySql>>::type_info()
     }
     fn compatible(ty: &MySqlTypeInfo) -> bool {
         <&[u8] as Type<MySql>>::compatible(ty)
+    }
+}
+
+impl Serialize for PokemonId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let id = self.0.to_base62();
+        serializer.serialize_str(&id)
     }
 }
